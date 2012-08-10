@@ -154,7 +154,18 @@ func handleRequest(res http.ResponseWriter, req *http.Request) {
 
 	case iReq.URL.Path == "/":
 		res.Header().Set("Allow", "GET")
-		fmt.Fprintf(res, `{"distributions": ["/distributions/%s"]}`, strings.Join(distributions, `, "/distributions/"`))
+		res.Header().Set("Content-Type", "application/json")
+
+		distPaths := make([]string, len(distributions))
+		for i, dist := range distributions {
+			distPaths[i] = "/distributions/" + dist
+		}
+
+		json, err := json.MarshalIndent(map[string][]string{"distributions": distPaths}, "", "  ")
+		if err != nil {
+			return
+		}
+		fmt.Fprintf(res, string(json))
 
 	default:
 		logger.Debug("REQ[%04d] unspecified location: %s", iReq.id, distribution)
