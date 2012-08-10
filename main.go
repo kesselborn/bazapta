@@ -24,16 +24,25 @@ type indexedRequest struct {
 }
 
 func main() {
+	var err error
+
 	flag.Parse()
 	http.HandleFunc("/", handleRequest)
 
-	log.Printf("Listening on %s\n", *laddr)
-	err := http.ListenAndServe(*laddr, nil)
+	defer func() {
+		if err != nil {
+			log.Fatal("GLOBAL: " + err.Error())
+			os.Exit(1)
+		}
+	}()
+
 
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s\n", err)
-		os.Exit(1)
+		return
 	}
+	log.Printf("GLOBAL: listening on %s\n", *laddr)
+	err = http.ListenAndServe(*laddr, nil)
+
 }
 
 func handleRequest(res http.ResponseWriter, req *http.Request) {
