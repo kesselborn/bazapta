@@ -23,7 +23,9 @@ var (
 	repreproPath = flag.String("p", "/srv/reprepro/internal/", "Reprepro path")
 	verbose      = flag.Bool("d", false, "Verbose debugging output")
 	// regex for entries like: squeeze|main|i386: hadoop-0.20-jobtracker 0.20.2+923.97-1
-	listRe      = regexp.MustCompilePOSIX("(.*)\\|(.*)\\|(.*): (.*) (.*)$")
+	listRe = regexp.MustCompilePOSIX("(.*)\\|(.*)\\|(.*): (.*) (.*)$")
+	// regex for package urls like: /distributions/squeeze/main/amd64/3w-sas_3.26.00.028-2.6.26-3
+	packageUrl  = regexp.MustCompilePOSIX("/distributions/(.*)/(.*)/(.*)/(.*)_(.*)$")
 	skipLineErr = errors.New("Skip this line")
 )
 
@@ -40,7 +42,43 @@ type ListEntry struct {
 }
 
 func (le ListEntry) Path() string {
-	return "/distributions/" + le.Distribution + "/" + le.Arch + "/" + le.Package + "_" + le.Version
+	return "/distributions/" + le.Distribution + "/" + le.Component + "/" + le.Arch + "/" + le.Package + "_" + le.Version
+}
+
+func pathToListEntry(path string) (le ListEntry, err error) {
+	parsedUrl := packageUrl.FindStringSubmatch(path)
+	if len(parsedUrl) != 6 {
+		err = skipLineErr
+		return
+	}
+
+	le = ListEntry{
+		Distribution: parsedUrl[1],
+		Component:    parsedUrl[2],
+		Arch:         parsedUrl[3],
+		Package:      parsedUrl[4],
+		Version:      parsedUrl[5],
+	}
+
+	return
+}
+
+func parseListEntry(line string, distribution string) (le ListEntry, err error) {
+	parsedEntry := listRe.FindStringSubmatch(line)
+	if len(parsedEntry) != 6 {
+		err = skipLineErr
+		return
+	}
+
+	le = ListEntry{
+		Distribution: parsedEntry[1],
+		Component:    parsedEntry[2],
+		Arch:         parsedEntry[3],
+		Package:      parsedEntry[4],
+		Version:      parsedEntry[5],
+	}
+
+	return
 }
 
 type List map[string]ListEntry
@@ -132,7 +170,7 @@ func handleRequest(res http.ResponseWriter, req *http.Request) {
 
 	logger.Debug("GLOBAL: received request, assigning id REQ[%04d]", id)
 
-	rePattern := regexp.MustCompile("/distributions/([^/]+)$")
+	rePattern := regexp.MustCompile("/distributions/([^/]+)")
 	distribution := rePattern.FindStringSubmatch(iReq.URL.Path)
 
 	switch {
@@ -185,15 +223,20 @@ func distributionRequests(res http.ResponseWriter, req indexedRequest, distribut
 	switch req.Method {
 	case "POST":
 		logger.Debug("REQ[%04d] receiving a new package for '%s'", req.id, distribution)
-		filename, err := persistFile(req)
-		print(filename)
+		var filename string
+		filename, err = persistFile(req)
 		if err != nil {
 			return err
 		}
+		err = registerPackage(req, distribution, filename)
 
 	case "GET":
 		logger.Debug("REQ[%04d] list packages for '%s'", req.id, distribution)
 		err = listPackages(res, req, distribution)
+
+	case "DELETE":
+		logger.Debug("REQ[%04d] delete packages out of '%s'", req.id, distribution)
+		err = deletePackage(res, req, distribution)
 
 	default:
 		logger.Debug("REQ[%04d] forbidden method: %s", req.id, req.Method)
@@ -204,19 +247,27 @@ func distributionRequests(res http.ResponseWriter, req indexedRequest, distribut
 	return
 }
 
-func parseListEntry(line string, distribution string) (le ListEntry, err error) {
-	parsedEntry := listRe.FindStringSubmatch(line)
-	if len(parsedEntry) != 6 {
-		err = skipLineErr
+func deletePackage(res http.ResponseWriter, req indexedRequest, distribution string) (err error) {
+	le, err := pathToListEntry(req.URL.Path)
+	if err != nil {
 		return
 	}
 
-	le = ListEntry{
-		Distribution: parsedEntry[1],
-		Component:    parsedEntry[2],
-		Arch:         parsedEntry[3],
-		Package:      parsedEntry[4],
-		Version:      parsedEntry[5],
+	rrPath, err := exec.LookPath("reprepro")
+	if err != nil {
+		return
+	}
+
+	cmd := exec.Cmd{
+		Path: "/usr/bin/sudo",
+		Dir:  *repreproPath,
+		Args: []string{"/usr/bin/sudo", rrPath, "remove", le.Distribution, le.Package},
+	}
+	logger.Debug("REQ[%04d] executing: %s", req.id, strings.Join(cmd.Args, " "))
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		logger.Error("REQ[%04d] executing: %s caused error %s", req.id, strings.Join(cmd.Args, " "), output)
 	}
 
 	return
@@ -233,11 +284,11 @@ func listPackages(res http.ResponseWriter, req indexedRequest, distribution stri
 		Dir:  *repreproPath,
 		Args: []string{"/usr/bin/sudo", rrPath, "list", distribution},
 	}
-	logger.Debug("REQ[%04d] executing: %#v", req.id, cmd)
+	logger.Debug("REQ[%04d] executing: %s", req.id, strings.Join(cmd.Args, " "))
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		logger.Error("REQ[%04d] executing: %#v caused error %s", req.id, cmd, output)
+		logger.Error("REQ[%04d] executing: %s caused error %s", req.id, strings.Join(cmd.Args, " "))
 		return
 	}
 
@@ -261,6 +312,32 @@ func listPackages(res http.ResponseWriter, req indexedRequest, distribution stri
 
 	res.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(res, string(json))
+
+	return
+}
+
+func registerPackage(req indexedRequest, distribution, filename string) (err error) {
+	rrPath, err := exec.LookPath("reprepro")
+	if err != nil {
+		return
+	}
+
+	cmd := exec.Cmd{
+		Path: "/usr/bin/sudo",
+		Dir:  *repreproPath,
+		Args: []string{"/usr/bin/sudo", rrPath, "includedeb", distribution, filename},
+	}
+	logger.Debug("REQ[%04d] executing: %s", req.id, strings.Join(cmd.Args, " "))
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		logger.Error("REQ[%04d] executing: %s caused error %s", req.id, strings.Join(cmd.Args, " "), output)
+	}
+
+	if skipped, _ := regexp.MatchString("^Skipping", string(output)); skipped {
+		logger.Error("REQ[%04d] executing: %s caused error %s", req.id, strings.Join(cmd.Args, " "), output)
+		err = errors.New("Error adding new package: " + string(output))
+	}
 
 	return
 }
