@@ -7,7 +7,6 @@ import (
 	"github.com/soundcloud/logorithm"
 	"io"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -21,11 +20,12 @@ const VERSION = "0.0.0"
 var (
 	laddr        = flag.String("l", "0.0.0.0:8080", "Listen address")
 	repreproPath = flag.String("p", "/srv/reprepro/internal/", "Reprepro path")
-	logger       = logorithm.New(os.Stdout, false, "bazapta", VERSION, "bazapta", os.Getpid())
+	verbose      = flag.Bool("d", false, "Verbose debugging output")
 )
 
 var id int
 var distributions []string
+var logger *logorithm.L
 
 type indexedRequest struct {
 	*http.Request
@@ -34,9 +34,9 @@ type indexedRequest struct {
 
 func main() {
 	var err error
-
 	flag.Parse()
-	http.HandleFunc("/", handleRequest)
+
+	logger = logorithm.New(os.Stdout, *verbose, "bazapta", VERSION, "bazapta", os.Getpid())
 
 	defer func() {
 		if err != nil {
@@ -54,7 +54,7 @@ func main() {
 	for _, fileInfo := range dirEntries {
 		if name := fileInfo.Name(); fileInfo.IsDir() && name[0] != '.' {
 			distributions = append(distributions, name)
-			log.Printf("GLOBAL: found distribution %s", name)
+			logger.Info("GLOBAL: found distribution %s", name)
 		}
 	}
 
@@ -75,7 +75,8 @@ func main() {
 		return
 	}
 
-	log.Printf("GLOBAL: listening on %s\n", *laddr)
+	http.HandleFunc("/", handleRequest)
+	logger.Info("GLOBAL: listening on %s\n", *laddr)
 	err = http.ListenAndServe(*laddr, nil)
 
 }
@@ -86,14 +87,14 @@ func handleRequest(res http.ResponseWriter, req *http.Request) {
 	id += 1
 	iReq := indexedRequest{req, id}
 
-	log.Printf("GLOBAL: received request, assigning id REQ[%04d]", id)
+	logger.Debug("GLOBAL: received request, assigning id REQ[%04d]", id)
 
 	rePattern := regexp.MustCompile("/distributions/([^/]+)$")
 	distribution := rePattern.FindStringSubmatch(iReq.URL.Path)
 
 	switch {
 	case len(distribution) > 0:
-		log.Printf("REQ[%04d] detected distribution: %s", iReq.id, distribution[1])
+		logger.Debug("REQ[%04d] detected distribution: %s", iReq.id, distribution[1])
 		err = distributionRequests(res, iReq, distribution[1])
 
 	case iReq.URL.Path == "/":
@@ -101,7 +102,7 @@ func handleRequest(res http.ResponseWriter, req *http.Request) {
 		fmt.Fprintf(res, `{"distributions": ["/distributions/%s"]}`, strings.Join(distributions, `", /distributions/"`))
 
 	default:
-		log.Printf("REQ[%04d] unspecified location: %s", iReq.id, distribution)
+		logger.Debug("REQ[%04d] unspecified location: %s", iReq.id, distribution)
 		res.Header().Set("Location", "/")
 		res.WriteHeader(301)
 	}
@@ -117,7 +118,7 @@ func distributionRequests(res http.ResponseWriter, req indexedRequest, distribut
 
 	switch req.Method {
 	case "POST":
-		log.Printf("REQ[%04d] receiving a new package for '%s'", req.id, distribution)
+		logger.Debug("REQ[%04d] receiving a new package for '%s'", req.id, distribution)
 		filename, err := persistFile(req)
 		print(filename)
 		if err != nil {
@@ -125,11 +126,11 @@ func distributionRequests(res http.ResponseWriter, req indexedRequest, distribut
 		}
 
 	case "GET":
-		log.Printf("REQ[%04d] list packages for '%s'", req.id, distribution)
+		logger.Debug("REQ[%04d] list packages for '%s'", req.id, distribution)
 		err = listPackages(res, req, distribution)
 
 	default:
-		log.Printf("REQ[%04d] forbidden method: %s", req.id, req.Method)
+		logger.Debug("REQ[%04d] forbidden method: %s", req.id, req.Method)
 
 		res.WriteHeader(http.StatusMethodNotAllowed)
 	}
@@ -148,11 +149,11 @@ func listPackages(res http.ResponseWriter, req indexedRequest, distribution stri
 		Dir:  *repreproPath,
 		Args: []string{rrPath, "list", distribution},
 	}
-	log.Printf("REQ[%04d] executing: %#v", req.id, cmd)
+	logger.Debug("REQ[%04d] executing: %#v", req.id, cmd)
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		log.Printf("REQ[%04d] executing: %#v", req.id, cmd)
+		logger.Debug("REQ[%04d] executing: %#v", req.id, cmd)
 		return
 	}
 
@@ -169,7 +170,7 @@ func persistFile(req indexedRequest) (filename string, err error) {
 	defer src.Close()
 
 	filename = "/tmp/" + header.Filename
-	log.Printf("REQ[%04d] saving received file to %s.", req.id, filename)
+	logger.Debug("REQ[%04d] saving received file to %s.", req.id, filename)
 	dst, err := os.Create(filename)
 	if err != nil {
 		return
