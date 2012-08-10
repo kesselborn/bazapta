@@ -242,6 +242,7 @@ func listPackages(res http.ResponseWriter, req indexedRequest, distribution stri
 		return
 	}
 
+	res.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(res, string(json))
 
 	return
