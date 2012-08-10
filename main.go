@@ -45,6 +45,30 @@ func main() {
 		}
 	}()
 
+	err = checkPreConditions()
+	if err != nil {
+		return
+	}
+
+	http.HandleFunc("/", handleRequest)
+	logger.Info("GLOBAL: listening on %s\n", *laddr)
+
+	err = http.ListenAndServe(*laddr, nil)
+}
+
+func checkPreConditions() (err error) {
+
+	err = checkRepreproPaths()
+	if err != nil {
+		return
+	}
+
+	err = checkSudoPermissions()
+
+	return
+}
+
+func checkRepreproPaths() (err error) {
 	distsPath := path.Join(*repreproPath, "/dists")
 	dirEntries, err := ioutil.ReadDir(distsPath)
 	if err != nil {
@@ -63,6 +87,10 @@ func main() {
 		return
 	}
 
+	return
+}
+
+func checkSudoPermissions() (err error) {
 	rrPath, err := exec.LookPath("reprepro")
 	if err != nil {
 		return
@@ -75,10 +103,7 @@ func main() {
 		return
 	}
 
-	http.HandleFunc("/", handleRequest)
-	logger.Info("GLOBAL: listening on %s\n", *laddr)
-	err = http.ListenAndServe(*laddr, nil)
-
+	return
 }
 
 func handleRequest(res http.ResponseWriter, req *http.Request) {
