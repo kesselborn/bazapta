@@ -119,6 +119,18 @@ func handleRequest(res http.ResponseWriter, req *http.Request) {
 
 	switch {
 	case len(distribution) > 0:
+		foundDistribution := false
+		for _, d := range distributions {
+			if d == distribution[1] {
+				logger.Debug("REQ[%04d] verified %s is a supported distribution", iReq.id, distribution[1])
+				foundDistribution = true
+			}
+		}
+		if !foundDistribution {
+			err = errors.New("unsupported distribution: '" + distribution[1] + "'")
+			break
+		}
+
 		logger.Debug("REQ[%04d] detected distribution: %s", iReq.id, distribution[1])
 		err = distributionRequests(res, iReq, distribution[1])
 
