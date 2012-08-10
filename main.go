@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -17,6 +18,7 @@ var (
 )
 
 var id int
+var distributions []string
 
 type indexedRequest struct {
 	*http.Request
@@ -36,6 +38,18 @@ func main() {
 		}
 	}()
 
+	dirEntries, err := ioutil.ReadDir(*repreproPath)
+	if err != nil {
+		return
+	}
+
+	for _, fileInfo := range dirEntries {
+		if name := fileInfo.Name(); fileInfo.IsDir() && name[0] != '.' {
+			distributions = append(distributions, name)
+			log.Printf("GLOBAL: found distribution %s", name)
+		}
+	}
+
 
 	if err != nil {
 		return
@@ -46,7 +60,6 @@ func main() {
 }
 
 func handleRequest(res http.ResponseWriter, req *http.Request) {
-	//var distribution string
 	var err error
 
 	id += 1
