@@ -32,6 +32,7 @@ var (
 var id int
 var distributions []string
 var logger *logorithm.L
+var rrPath string
 
 type ListEntry struct {
 	Distribution string
@@ -101,6 +102,11 @@ func main() {
 		}
 	}()
 
+	rrPath, err = exec.LookPath("reprepro")
+	if err != nil {
+		return
+	}
+
 	err = checkPreConditions()
 	if err != nil {
 		return
@@ -147,11 +153,6 @@ func checkRepreproPaths() (err error) {
 }
 
 func checkSudoPermissions() (err error) {
-	rrPath, err := exec.LookPath("reprepro")
-	if err != nil {
-		return
-	}
-
 	cmd := exec.Cmd{Path: "/usr/bin/sudo", Args: []string{"/usr/bin/sudo", "-n", rrPath, "-h"}}
 	_, err = cmd.CombinedOutput()
 	if err != nil {
@@ -253,11 +254,6 @@ func deletePackage(res http.ResponseWriter, req indexedRequest, distribution str
 		return
 	}
 
-	rrPath, err := exec.LookPath("reprepro")
-	if err != nil {
-		return
-	}
-
 	cmd := exec.Cmd{
 		Path: "/usr/bin/sudo",
 		Dir:  *repreproPath,
@@ -274,11 +270,6 @@ func deletePackage(res http.ResponseWriter, req indexedRequest, distribution str
 }
 
 func listPackages(res http.ResponseWriter, req indexedRequest, distribution string) (err error) {
-	rrPath, err := exec.LookPath("reprepro")
-	if err != nil {
-		return
-	}
-
 	cmd := exec.Cmd{
 		Path: "/usr/bin/sudo",
 		Dir:  *repreproPath,
@@ -317,11 +308,6 @@ func listPackages(res http.ResponseWriter, req indexedRequest, distribution stri
 }
 
 func registerPackage(req indexedRequest, distribution, filename string) (err error) {
-	rrPath, err := exec.LookPath("reprepro")
-	if err != nil {
-		return
-	}
-
 	cmd := exec.Cmd{
 		Path: "/usr/bin/sudo",
 		Dir:  *repreproPath,
