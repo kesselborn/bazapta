@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -21,11 +22,24 @@ var (
 	laddr        = flag.String("l", "0.0.0.0:8080", "Listen address")
 	repreproPath = flag.String("p", "/srv/reprepro/internal/", "Reprepro path")
 	verbose      = flag.Bool("d", false, "Verbose debugging output")
+	// regex for entries like: squeeze|main|i386: hadoop-0.20-jobtracker 0.20.2+923.97-1
+	listRe      = regexp.MustCompilePOSIX("(.*)\\|(.*)\\|(.*): (.*) (.*)$")
+	skipLineErr = errors.New("Skip this line")
 )
 
 var id int
 var distributions []string
 var logger *logorithm.L
+
+type ListEntry struct {
+	Distribution string
+	Component    string
+	Arch         string
+	Package      string
+	Version      string
+}
+
+type List map[string][]ListEntry
 
 type indexedRequest struct {
 	*http.Request
@@ -96,7 +110,7 @@ func checkSudoPermissions() (err error) {
 		return
 	}
 
-	cmd := exec.Cmd{Path: "/usr/bin/sudo", Args: []string{"/usr/bin/sudo", "-n", rrPath}}
+	cmd := exec.Cmd{Path: "/usr/bin/sudo", Args: []string{"/usr/bin/sudo", "-n", rrPath, "-h"}}
 	_, err = cmd.CombinedOutput()
 	if err != nil {
 		err = errors.New("need password-less sudo rights for " + rrPath)
@@ -136,7 +150,7 @@ func handleRequest(res http.ResponseWriter, req *http.Request) {
 
 	case iReq.URL.Path == "/":
 		res.Header().Set("Allow", "GET")
-		fmt.Fprintf(res, `{"distributions": ["/distributions/%s"]}`, strings.Join(distributions, `", /distributions/"`))
+		fmt.Fprintf(res, `{"distributions": ["/distributions/%s"]}`, strings.Join(distributions, `, "/distributions/"`))
 
 	default:
 		logger.Debug("REQ[%04d] unspecified location: %s", iReq.id, distribution)
@@ -175,6 +189,18 @@ func distributionRequests(res http.ResponseWriter, req indexedRequest, distribut
 	return
 }
 
+func parseListEntry(line string) (le ListEntry, err error) {
+	parsedEntry := listRe.FindStringSubmatch(line)
+	if len(parsedEntry) != 6 {
+		err = skipLineErr
+		return
+	}
+
+	le = ListEntry{parsedEntry[1], parsedEntry[2], parsedEntry[3], parsedEntry[4], parsedEntry[5]}
+
+	return
+}
+
 func listPackages(res http.ResponseWriter, req indexedRequest, distribution string) (err error) {
 	rrPath, err := exec.LookPath("reprepro")
 	if err != nil {
@@ -190,11 +216,33 @@ func listPackages(res http.ResponseWriter, req indexedRequest, distribution stri
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		logger.Debug("REQ[%04d] executing: %#v", req.id, cmd)
+		logger.Error("REQ[%04d] executing: %#v caused error %s", req.id, cmd, output)
 		return
 	}
 
-	fmt.Fprintf(res, string(output))
+	list := make(List)
+	for _, line := range strings.Split(string(output), "\n") {
+		le, err := parseListEntry(line)
+		if err == skipLineErr {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+
+		if _, found := list[le.Arch]; found == false {
+			list[le.Arch] = []ListEntry{le}
+		} else {
+			list[le.Arch] = append(list[le.Arch], le)
+		}
+	}
+
+	json, err := json.MarshalIndent(list, "", " ")
+	if err != nil {
+		return
+	}
+
+	fmt.Fprintf(res, string(json))
 
 	return
 }
