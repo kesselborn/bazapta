@@ -1,20 +1,27 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
+	"github.com/soundcloud/logorithm"
 	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
 	"os/exec"
+	"path"
 	"regexp"
+	"strings"
 )
+
+const VERSION = "0.0.0"
 
 var (
 	laddr        = flag.String("l", "0.0.0.0:8080", "Listen address")
 	repreproPath = flag.String("p", "/srv/reprepro/internal/", "Reprepro path")
+	logger       = logorithm.New(os.Stdout, false, "bazapta", VERSION, "bazapta", os.Getpid())
 )
 
 var id int
@@ -33,12 +40,13 @@ func main() {
 
 	defer func() {
 		if err != nil {
-			log.Fatal("GLOBAL: " + err.Error())
+			logger.Error("GLOBAL: " + err.Error())
 			os.Exit(1)
 		}
 	}()
 
-	dirEntries, err := ioutil.ReadDir(*repreproPath)
+	distsPath := path.Join(*repreproPath, "/dists")
+	dirEntries, err := ioutil.ReadDir(distsPath)
 	if err != nil {
 		return
 	}
@@ -50,10 +58,23 @@ func main() {
 		}
 	}
 
+	if len(distributions) == 0 {
+		err = errors.New("could not find any distributions in " + distsPath)
+		return
+	}
 
+	rrPath, err := exec.LookPath("reprepro")
 	if err != nil {
 		return
 	}
+
+	cmd := exec.Cmd{Path: "/usr/bin/sudo", Args: []string{"/usr/bin/sudo", "-n", rrPath}}
+	_, err = cmd.CombinedOutput()
+	if err != nil {
+		err = errors.New("need password-less sudo rights for " + rrPath)
+		return
+	}
+
 	log.Printf("GLOBAL: listening on %s\n", *laddr)
 	err = http.ListenAndServe(*laddr, nil)
 
@@ -73,12 +94,16 @@ func handleRequest(res http.ResponseWriter, req *http.Request) {
 	switch {
 	case len(distribution) > 0:
 		log.Printf("REQ[%04d] detected distribution: %s", iReq.id, distribution[1])
-		err = registerNewPackage(res, iReq, distribution[1])
+		err = distributionRequests(res, iReq, distribution[1])
+
+	case iReq.URL.Path == "/":
+		res.Header().Set("Allow", "GET")
+		fmt.Fprintf(res, `{"distributions": ["/distributions/%s"]}`, strings.Join(distributions, `", /distributions/"`))
+
 	default:
 		log.Printf("REQ[%04d] unspecified location: %s", iReq.id, distribution)
 		res.Header().Set("Location", "/")
 		res.WriteHeader(301)
-		return
 	}
 
 	if err != nil {
@@ -87,10 +112,12 @@ func handleRequest(res http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func registerNewPackage(res http.ResponseWriter, req indexedRequest, distribution string) (err error) {
+func distributionRequests(res http.ResponseWriter, req indexedRequest, distribution string) (err error) {
+	res.Header().Set("Allow", "GET,POST")
+
 	switch req.Method {
 	case "POST":
-		log.Printf("REQ[%04d] get a new package for '%s'", req.id, distribution)
+		log.Printf("REQ[%04d] receiving a new package for '%s'", req.id, distribution)
 		filename, err := persistFile(req)
 		print(filename)
 		if err != nil {
@@ -98,13 +125,12 @@ func registerNewPackage(res http.ResponseWriter, req indexedRequest, distributio
 		}
 
 	case "GET":
-		log.Printf("REQ[%04d] get a new package for '%s'", req.id, distribution)
+		log.Printf("REQ[%04d] list packages for '%s'", req.id, distribution)
 		err = listPackages(res, req, distribution)
 
 	default:
 		log.Printf("REQ[%04d] forbidden method: %s", req.id, req.Method)
 
-		res.Header().Set("Allow", "POST,GET")
 		res.WriteHeader(http.StatusMethodNotAllowed)
 	}
 
@@ -112,7 +138,7 @@ func registerNewPackage(res http.ResponseWriter, req indexedRequest, distributio
 }
 
 func listPackages(res http.ResponseWriter, req indexedRequest, distribution string) (err error) {
-	path, err := exec.LookPath("reprepro")
+	rrPath, err := exec.LookPath("reprepro")
 	if err != nil {
 		return
 	}
@@ -120,7 +146,7 @@ func listPackages(res http.ResponseWriter, req indexedRequest, distribution stri
 	cmd := exec.Cmd{
 		Path: "/usr/bin/sudo",
 		Dir:  *repreproPath,
-		Args: []string{path, "list", distribution},
+		Args: []string{rrPath, "list", distribution},
 	}
 	log.Printf("REQ[%04d] executing: %#v", req.id, cmd)
 
