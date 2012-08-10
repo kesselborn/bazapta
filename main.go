@@ -39,7 +39,11 @@ type ListEntry struct {
 	Version      string
 }
 
-type List map[string][]ListEntry
+func (le ListEntry) Path() string {
+	return "/distributions/" + le.Distribution + "/" + le.Arch + "/" + le.Package + "_" + le.Version
+}
+
+type List map[string]ListEntry
 
 type indexedRequest struct {
 	*http.Request
@@ -189,14 +193,20 @@ func distributionRequests(res http.ResponseWriter, req indexedRequest, distribut
 	return
 }
 
-func parseListEntry(line string) (le ListEntry, err error) {
+func parseListEntry(line string, distribution string) (le ListEntry, err error) {
 	parsedEntry := listRe.FindStringSubmatch(line)
 	if len(parsedEntry) != 6 {
 		err = skipLineErr
 		return
 	}
 
-	le = ListEntry{parsedEntry[1], parsedEntry[2], parsedEntry[3], parsedEntry[4], parsedEntry[5]}
+	le = ListEntry{
+		Distribution: parsedEntry[1],
+		Component:    parsedEntry[2],
+		Arch:         parsedEntry[3],
+		Package:      parsedEntry[4],
+		Version:      parsedEntry[5],
+	}
 
 	return
 }
@@ -222,7 +232,7 @@ func listPackages(res http.ResponseWriter, req indexedRequest, distribution stri
 
 	list := make(List)
 	for _, line := range strings.Split(string(output), "\n") {
-		le, err := parseListEntry(line)
+		le, err := parseListEntry(line, distribution)
 		if err == skipLineErr {
 			continue
 		}
@@ -230,11 +240,7 @@ func listPackages(res http.ResponseWriter, req indexedRequest, distribution stri
 			return err
 		}
 
-		if _, found := list[le.Arch]; found == false {
-			list[le.Arch] = []ListEntry{le}
-		} else {
-			list[le.Arch] = append(list[le.Arch], le)
-		}
+		list[le.Path()] = le
 	}
 
 	json, err := json.MarshalIndent(list, "", " ")
