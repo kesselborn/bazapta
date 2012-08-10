@@ -184,7 +184,7 @@ func listPackages(res http.ResponseWriter, req indexedRequest, distribution stri
 	cmd := exec.Cmd{
 		Path: "/usr/bin/sudo",
 		Dir:  *repreproPath,
-		Args: []string{rrPath, "list", distribution},
+		Args: []string{"/usr/bin/sudo", rrPath, "list", distribution},
 	}
 	logger.Debug("REQ[%04d] executing: %#v", req.id, cmd)
 
