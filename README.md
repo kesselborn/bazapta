@@ -23,6 +23,14 @@ get the path to the package by listing packages
 API routes
 ----------
 
+1. .deb package built
+2. POST /dists/squeezy/main
+   req-entity: mypkg_1.0.0_i386.deb
+   res-location: /dists/squeezy/main/mypkg_1.0.0_i386
+3. metadata: GET /dists/[...]
+4. package: GET /dists/[...].deb
+5. remove: DELETE /dists/[...]
+
 GET              /
 GET|OPTIONS|POST /dists/:name(/:component)
 GET|DELETE       /dists/:name/:component/:pkgname_:version_:arch
