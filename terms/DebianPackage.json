@@ -2,15 +2,22 @@
   "@context": {
     "dc": "http://purl.org/dc/terms/"
   },
-  "name":      "dc:name",
-  "dist":      "/terms/dist",
-  "component": "/terms/component",
-  "arch":      "/terms/arch",
-  "version":   "/terms/version",
-  "url": {
+  "Url": {
     "@type": "@id"
   },
+  "Name": "dc:name",
   "downloadUrl": {
-    "@type": "@id"
-  }
+    "@type": "@id",
+    "@id": "/terms/dotDebUrl"
+  },
+  "Dist": {
+    "Url": {
+      "@id":   "/terms/dist",
+      "@type": "@id"
+    },
+    "Name": "dc:name"
+  },
+  "Component": "/terms/component",
+  "Arch":      "/terms/arch",
+  "Version":   "/terms/version"
 }
