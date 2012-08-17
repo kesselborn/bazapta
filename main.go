@@ -59,6 +59,10 @@ func (le *ListEntry) fillUrls(req indexedRequest) {
 
 func pathToListEntry(path string) (le ListEntry, err error) {
 	parsedUrl := packageUrl.FindStringSubmatch(path)
+	if len(parsedUrl) == 0 {
+		parsedUrl = packageInfoUrl.FindStringSubmatch(path)
+	}
+
 	if len(parsedUrl) != 6 {
 		logger.Debug("Regex parsing only found %d sub-matches: %#v", len(parsedUrl), parsedUrl)
 		err = skipLineErr
@@ -70,7 +74,7 @@ func pathToListEntry(path string) (le ListEntry, err error) {
 		Component: parsedUrl[2],
 		Name:      parsedUrl[3],
 		Version:   parsedUrl[4],
-		Arch:      parsedUrl[3],
+		Arch:      parsedUrl[5],
 	}
 
 	return
@@ -226,10 +230,18 @@ func handleRequest(res http.ResponseWriter, req *http.Request) {
 }
 
 func distributionRequests(res http.ResponseWriter, req indexedRequest, distribution string) (err error) {
-	res.Header().Set("Allow", "GET,POST")
 
-	switch req.Method {
-	case "POST":
+	pkg := packageUrl.FindStringSubmatch(req.URL.Path)
+	pkgInfo := packageInfoUrl.FindStringSubmatch(req.URL.Path)
+
+	switch {
+	case len(pkg) > 0:
+		logger.Debug("REQ[%04d] package url", req.id)
+		handlePackageUrl(res, req, distribution)
+	case len(pkgInfo) > 0:
+		logger.Debug("REQ[%04d] package info url", req.id)
+		handlePackageInfoUrl(res, req, distribution)
+	case req.Method == "POST":
 		logger.Debug("REQ[%04d] receiving a new package for '%s'", req.id, distribution)
 		var filename string
 		filename, err = persistFile(req)
@@ -238,15 +250,12 @@ func distributionRequests(res http.ResponseWriter, req indexedRequest, distribut
 		}
 		err = registerPackage(req, distribution, filename)
 
-	case "GET":
+	case req.Method == "GET":
 		logger.Debug("REQ[%04d] action: list packages for '%s'", req.id, distribution)
 		err = listPackages(res, req, distribution)
 
-	case "DELETE":
-		logger.Debug("REQ[%04d] action: delete packages out of '%s'", req.id, distribution)
-		err = deletePackage(res, req, distribution)
-
 	default:
+		res.Header().Set("Allow", "GET,POST")
 		logger.Debug("REQ[%04d] forbidden method: %s", req.id, req.Method)
 
 		res.WriteHeader(http.StatusMethodNotAllowed)
@@ -255,39 +264,99 @@ func distributionRequests(res http.ResponseWriter, req indexedRequest, distribut
 	return
 }
 
-func deletePackage(res http.ResponseWriter, req indexedRequest, distribution string) (err error) {
+func reprepro(args []string) (output string, err error) {
+	cmd := exec.Cmd{
+		Path: rrPath,
+		Dir:  *repreproPath,
+		Args: append([]string{rrPath}, args...),
+	}
+	logger.Debug("executing: %s", strings.Join(cmd.Args, " "))
+
+	bytes, err := cmd.CombinedOutput()
+	output = string(bytes)
+
+	return
+}
+
+func handlePackageInfoUrl(res http.ResponseWriter, req indexedRequest, distribution string) (err error) {
 	le, err := pathToListEntry(req.URL.Path)
 	if err != nil {
 		logger.Error("REQ[%04d] error converting '%s' to list entry", req.id, req.URL.Path)
 		return
 	}
 
-	cmd := exec.Cmd{
-		Path: rrPath,
-		Dir:  *repreproPath,
-		Args: []string{rrPath, "remove", le.Dist.Name, "-A", le.Arch, le.Name},
-	}
-	logger.Debug("REQ[%04d] executing: %s", req.id, strings.Join(cmd.Args, " "))
+	res.Header().Set("Allow", "GET")
 
-	output, err := cmd.CombinedOutput()
+	if req.Method != "GET" {
+		res.Header().Set("Allow", "GET,POST")
+		logger.Debug("REQ[%04d] forbidden method: %s", req.id, req.Method)
+
+		res.WriteHeader(http.StatusMethodNotAllowed)
+	} else {
+		var output string
+
+		output, err = reprepro([]string{"-A", le.Arch, "list", le.Dist.Name, le.Name})
+		if err != nil {
+			logger.Error("REQ[%04d] executing command caused error %s", req.id, output)
+		}
+		if output == "" {
+			res.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		le, err = parseListEntry(req, output, distribution)
+		if err != nil {
+			return
+		}
+
+		json, err := json.MarshalIndent(le, "", " ")
+		if err != nil {
+			return err
+		}
+
+		res.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(res, string(json))
+	}
+
+	return
+}
+
+func handlePackageUrl(res http.ResponseWriter, req indexedRequest, distribution string) (err error) {
+	le, err := pathToListEntry(req.URL.Path)
 	if err != nil {
-		logger.Error("REQ[%04d] executing: %s caused error %s", req.id, strings.Join(cmd.Args, " "), output)
+		logger.Error("REQ[%04d] error converting '%s' to list entry", req.id, req.URL.Path)
+		return
+	}
+
+	res.Header().Set("Allow", "GET,DELETE")
+
+	var output string
+	switch req.Method {
+	case "DELETE":
+		output, err = reprepro([]string{"-A", le.Arch, "remove", le.Dist.Name, le.Name})
+		if err != nil {
+			logger.Error("REQ[%04d] executing command caused error %s", req.id, output)
+		}
+	case "GET":
+		output, err = reprepro([]string{"-A", le.Arch, "list", le.Dist.Name, le.Name})
+		if err != nil {
+			logger.Error("REQ[%04d] executing command caused error %s", req.id, output)
+		}
+	default:
+		res.Header().Set("Allow", "GET,POST")
+		logger.Debug("REQ[%04d] forbidden method: %s", req.id, req.Method)
+
+		res.WriteHeader(http.StatusMethodNotAllowed)
 	}
 
 	return
 }
 
 func listPackages(res http.ResponseWriter, req indexedRequest, distribution string) (err error) {
-	cmd := exec.Cmd{
-		Path: rrPath,
-		Dir:  *repreproPath,
-		Args: []string{rrPath, "list", distribution},
-	}
-	logger.Debug("REQ[%04d] executing: %s", req.id, strings.Join(cmd.Args, " "))
 
-	output, err := cmd.CombinedOutput()
+	output, err := reprepro([]string{"list", distribution})
 	if err != nil {
-		logger.Error("REQ[%04d] executing: %s caused error %s", req.id, strings.Join(cmd.Args, " "))
+		logger.Error("REQ[%04d] error executing command: %s", req.id, output)
 		return
 	}
 
@@ -318,20 +387,13 @@ func listPackages(res http.ResponseWriter, req indexedRequest, distribution stri
 }
 
 func registerPackage(req indexedRequest, distribution, filename string) (err error) {
-	cmd := exec.Cmd{
-		Path: rrPath,
-		Dir:  *repreproPath,
-		Args: []string{rrPath, "includedeb", distribution, filename},
-	}
-	logger.Debug("REQ[%04d] executing: %s", req.id, strings.Join(cmd.Args, " "))
-
-	output, err := cmd.CombinedOutput()
+	output, err := reprepro([]string{"includedeb", distribution, filename})
 	if err != nil {
-		logger.Error("REQ[%04d] executing: %s caused error %s", req.id, strings.Join(cmd.Args, " "), output)
+		logger.Error("REQ[%04d] error executing command: %s", req.id, output)
 	}
 
 	if skipped, _ := regexp.MatchString("^Skipping", string(output)); skipped {
-		logger.Error("REQ[%04d] executing: %s caused error %s", req.id, strings.Join(cmd.Args, " "), output)
+		logger.Error("REQ[%04d] error executing command: %s", req.id, output)
 		err = errors.New("Error adding new package: " + string(output))
 	}
 
