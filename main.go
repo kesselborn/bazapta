@@ -230,7 +230,6 @@ func handleRequest(res http.ResponseWriter, req *http.Request) {
 }
 
 func distributionRequests(res http.ResponseWriter, req indexedRequest, distribution string) (err error) {
-
 	pkg := packageUrl.FindStringSubmatch(req.URL.Path)
 	pkgInfo := packageInfoUrl.FindStringSubmatch(req.URL.Path)
 
@@ -286,6 +285,7 @@ func handlePackageInfoUrl(res http.ResponseWriter, req indexedRequest, distribut
 	}
 
 	res.Header().Set("Allow", "GET")
+	res.Header().Set("Link", `</terms/DebianPackage>; rel="describedby"; type="application/json"`)
 
 	if req.Method != "GET" {
 		res.Header().Set("Allow", "GET,POST")
@@ -381,6 +381,7 @@ func listPackages(res http.ResponseWriter, req indexedRequest, distribution stri
 	}
 
 	res.Header().Set("Content-Type", "application/json")
+	res.Header().Set("Link", `</terms/Dist>; rel="describedby"; type="application/json"`)
 	fmt.Fprintf(res, string(json))
 
 	return
