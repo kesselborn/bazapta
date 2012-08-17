@@ -171,6 +171,9 @@ func handleRequest(res http.ResponseWriter, req *http.Request) {
 	rePattern := regexp.MustCompile("/dists/([^/]+)")
 	distribution := rePattern.FindStringSubmatch(iReq.URL.Path)
 
+	termPattern := regexp.MustCompile("^/terms/([^/]+)$")
+	term := termPattern.FindStringSubmatch(iReq.URL.Path)
+
 	switch {
 	case len(distribution) > 0:
 		foundDist := false
@@ -202,6 +205,9 @@ func handleRequest(res http.ResponseWriter, req *http.Request) {
 			return
 		}
 		fmt.Fprintf(res, string(json))
+
+	case len(term) > 0:
+		err = termRequests(res, iReq, term[1])
 
 	default:
 		logger.Debug("REQ[%04d] unspecified location: %s", iReq.id, distribution)
