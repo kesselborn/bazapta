@@ -25,7 +25,7 @@ var (
 	// regex for entries like: squeeze|main|i386: hadoop-0.20-jobtracker 0.20.2+923.97-1
 	listRe = regexp.MustCompilePOSIX("(.*)\\|(.*)\\|(.*): (.*) (.*)$")
 	// regex for package urls like: /dists/squeeze/3w-sas_3.26.00.028-2.6.26-3_arch
-	packageUrl  = regexp.MustCompilePOSIX("/dists/(.*)/(.*)_(.*)_([^\\.]).deb*$")
+	packageUrl  = regexp.MustCompilePOSIX("/dists/(.*)/(.*)/(.*)_(.*)_(.*)\\.deb$")
 	skipLineErr = errors.New("Skip this line")
 )
 
@@ -45,7 +45,7 @@ type ListEntry struct {
 }
 
 func (le ListEntry) createUrl(req indexedRequest) string {
-	return "http://" + req.Host + "/dists/" + le.Dist + "/" + le.Name + "_" + le.Version + "_" + le.Arch
+	return "http://" + req.Host + "/dists/" + le.Dist + "/" + le.Component + "/" + le.Name + "_" + le.Version + "_" + le.Arch
 }
 
 func (le ListEntry) createDownloadUrl(req indexedRequest) string {
@@ -55,6 +55,7 @@ func (le ListEntry) createDownloadUrl(req indexedRequest) string {
 func pathToListEntry(path string) (le ListEntry, err error) {
 	parsedUrl := packageUrl.FindStringSubmatch(path)
 	if len(parsedUrl) != 6 {
+		logger.Debug("Regex parsing only found %d sub-matches: %#v", len(parsedUrl), parsedUrl)
 		err = skipLineErr
 		return
 	}
@@ -62,9 +63,9 @@ func pathToListEntry(path string) (le ListEntry, err error) {
 	le = ListEntry{
 		Dist:      parsedUrl[1],
 		Component: parsedUrl[2],
+		Name:      parsedUrl[3],
+		Version:   parsedUrl[4],
 		Arch:      parsedUrl[3],
-		Name:      parsedUrl[4],
-		Version:   parsedUrl[5],
 	}
 
 	return
@@ -247,14 +248,14 @@ func distributionRequests(res http.ResponseWriter, req indexedRequest, distribut
 func deletePackage(res http.ResponseWriter, req indexedRequest, distribution string) (err error) {
 	le, err := pathToListEntry(req.URL.Path)
 	if err != nil {
-		logger.Error("REQ[%04d] error converting '%s' to list entry", req.URL.Path)
+		logger.Error("REQ[%04d] error converting '%s' to list entry", req.id, req.URL.Path)
 		return
 	}
 
 	cmd := exec.Cmd{
 		Path: rrPath,
 		Dir:  *repreproPath,
-		Args: []string{rrPath, "remove", le.Dist, le.Name},
+		Args: []string{rrPath, "remove", le.Dist, "-A", le.Arch, le.Name},
 	}
 	logger.Debug("REQ[%04d] executing: %s", req.id, strings.Join(cmd.Args, " "))
 
