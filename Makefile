@@ -8,7 +8,7 @@ clean:
 	rm -rf bin pkg src
 
 # build project using its own GOPATH
-PKG=github.com/soundcloud/bazapta
+PKG=github.com/kesselborn/bazapta
 PKG_GOPATH=$(PWD)/src/$(PKG)
 
 build: clean compile
