@@ -150,7 +150,6 @@ func checkRepreproPaths() (err error) {
 	return
 }
 
-
 func handleRequest(res http.ResponseWriter, req *http.Request) {
 	var err error
 
@@ -220,11 +219,11 @@ func distributionRequests(res http.ResponseWriter, req indexedRequest, distribut
 		err = registerPackage(req, distribution, filename)
 
 	case "GET":
-		logger.Debug("REQ[%04d] list packages for '%s'", req.id, distribution)
+		logger.Debug("REQ[%04d] action: list packages for '%s'", req.id, distribution)
 		err = listPackages(res, req, distribution)
 
 	case "DELETE":
-		logger.Debug("REQ[%04d] delete packages out of '%s'", req.id, distribution)
+		logger.Debug("REQ[%04d] action: delete packages out of '%s'", req.id, distribution)
 		err = deletePackage(res, req, distribution)
 
 	default:
@@ -239,6 +238,7 @@ func distributionRequests(res http.ResponseWriter, req indexedRequest, distribut
 func deletePackage(res http.ResponseWriter, req indexedRequest, distribution string) (err error) {
 	le, err := pathToListEntry(req.URL.Path)
 	if err != nil {
+		logger.Error("REQ[%04d] error converting '%s' to list entry", req.URL.Path)
 		return
 	}
 
@@ -319,6 +319,7 @@ func registerPackage(req indexedRequest, distribution, filename string) (err err
 func persistFile(req indexedRequest) (filename string, err error) {
 	src, header, err := req.FormFile("file")
 	if err != nil {
+		logger.Error("REQ[%04d] error getting file from request: %#v / %#v.", req.id, req, req.Header)
 		return
 	}
 	defer src.Close()
