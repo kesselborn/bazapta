@@ -2,8 +2,7 @@ VERSION?=$$( git describe --tags || git rev-parse --short HEAD || date "+build%Y
 GOFLAGS=-v -x -ldflags "-X main.VERSION_STRING $$(echo $(VERSION))"
 GOPATH=${PWD}
 
-default:
-	go build $(GOFLAGS)
+default: compile
 
 clean:
 	rm -rf bin pkg src
