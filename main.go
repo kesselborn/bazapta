@@ -199,12 +199,12 @@ func handleRequest(res http.ResponseWriter, req *http.Request) {
 		res.Header().Set("Allow", "GET")
 		res.Header().Set("Content-Type", "application/json")
 
-		distPaths := make([]string, len(dists))
-		for i, dist := range dists {
-			distPaths[i] = "http://" + iReq.Host + "/dists/" + dist
+		distTypes := make([]dist, len(dists))
+		for i, distName := range dists {
+			distTypes[i] = dist{distName, "http://" + iReq.Host + "/dists/" + distName}
 		}
 
-		json, err := json.MarshalIndent(map[string][]string{"dists": distPaths}, "", "  ")
+		json, err := json.MarshalIndent(distTypes, "", "  ")
 		if err != nil {
 			return
 		}
