@@ -125,8 +125,6 @@ func checkPreConditions() (err error) {
 		return
 	}
 
-	err = checkSudoPermissions()
-
 	return
 }
 
@@ -152,16 +150,6 @@ func checkRepreproPaths() (err error) {
 	return
 }
 
-func checkSudoPermissions() (err error) {
-	cmd := exec.Cmd{Path: "/usr/bin/sudo", Args: []string{"/usr/bin/sudo", "-n", rrPath, "-h"}}
-	_, err = cmd.CombinedOutput()
-	if err != nil {
-		err = errors.New("need password-less sudo rights for " + rrPath)
-		return
-	}
-
-	return
-}
 
 func handleRequest(res http.ResponseWriter, req *http.Request) {
 	var err error
@@ -255,9 +243,9 @@ func deletePackage(res http.ResponseWriter, req indexedRequest, distribution str
 	}
 
 	cmd := exec.Cmd{
-		Path: "/usr/bin/sudo",
+		Path: rrPath,
 		Dir:  *repreproPath,
-		Args: []string{"/usr/bin/sudo", rrPath, "remove", le.Distribution, le.Package},
+		Args: []string{rrPath, "remove", le.Distribution, le.Package},
 	}
 	logger.Debug("REQ[%04d] executing: %s", req.id, strings.Join(cmd.Args, " "))
 
@@ -271,9 +259,9 @@ func deletePackage(res http.ResponseWriter, req indexedRequest, distribution str
 
 func listPackages(res http.ResponseWriter, req indexedRequest, distribution string) (err error) {
 	cmd := exec.Cmd{
-		Path: "/usr/bin/sudo",
+		Path: rrPath,
 		Dir:  *repreproPath,
-		Args: []string{"/usr/bin/sudo", rrPath, "list", distribution},
+		Args: []string{rrPath, "list", distribution},
 	}
 	logger.Debug("REQ[%04d] executing: %s", req.id, strings.Join(cmd.Args, " "))
 
@@ -309,9 +297,9 @@ func listPackages(res http.ResponseWriter, req indexedRequest, distribution stri
 
 func registerPackage(req indexedRequest, distribution, filename string) (err error) {
 	cmd := exec.Cmd{
-		Path: "/usr/bin/sudo",
+		Path: rrPath,
 		Dir:  *repreproPath,
-		Args: []string{"/usr/bin/sudo", rrPath, "includedeb", distribution, filename},
+		Args: []string{rrPath, "includedeb", distribution, filename},
 	}
 	logger.Debug("REQ[%04d] executing: %s", req.id, strings.Join(cmd.Args, " "))
 
