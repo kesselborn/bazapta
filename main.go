@@ -42,8 +42,8 @@ type ListEntry struct {
 	Version      string
 }
 
-func (le ListEntry) Path() string {
-	return "/distributions/" + le.Distribution + "/" + le.Component + "/" + le.Arch + "/" + le.Package + "_" + le.Version
+func (le ListEntry) Path(req indexedRequest) string {
+	return "http://" + req.Host + "/distributions/" + le.Distribution + "/" + le.Component + "/" + le.Arch + "/" + le.Package + "_" + le.Version
 }
 
 func pathToListEntry(path string) (le ListEntry, err error) {
@@ -184,7 +184,7 @@ func handleRequest(res http.ResponseWriter, req *http.Request) {
 
 		distPaths := make([]string, len(distributions))
 		for i, dist := range distributions {
-			distPaths[i] = "/distributions/" + dist
+			distPaths[i] = "http://" + iReq.Host + "/distributions/" + dist
 		}
 
 		json, err := json.MarshalIndent(map[string][]string{"distributions": distPaths}, "", "  ")
@@ -281,7 +281,7 @@ func listPackages(res http.ResponseWriter, req indexedRequest, distribution stri
 			return err
 		}
 
-		list[le.Path()] = le
+		list[le.Path(req)] = le
 	}
 
 	json, err := json.MarshalIndent(list, "", " ")
