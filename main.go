@@ -338,10 +338,36 @@ func handlePackageUrl(res http.ResponseWriter, req indexedRequest, distribution 
 			logger.Error("REQ[%04d] executing command caused error %s", req.id, output)
 		}
 	case "GET":
-		output, err = reprepro([]string{"-A", le.Arch, "list", le.Dist.Name, le.Name})
+		output, err = reprepro([]string{"dumpreferences"})
 		if err != nil {
 			logger.Error("REQ[%04d] executing command caused error %s", req.id, output)
 		}
+
+		regexArch := regexp.MustCompile(" ([^ ]+" + le.Name + "_" + le.Version + "_" + le.Arch + ".deb)$")
+		regexAll := regexp.MustCompile(" ([^ ]+" + le.Name + "_" + le.Version + "_all.deb)$")
+
+		var path []string
+		for _, line := range strings.Split(output, "\n") {
+			path = regexArch.FindStringSubmatch(line)
+			if len(path) > 0 {
+				break
+			}
+			path = regexAll.FindStringSubmatch(line)
+			if len(path) > 0 {
+				break
+			}
+		}
+
+		if len(path) == 0 {
+			logger.Error(fmt.Sprintf("REQ[%04d] could not find file for %#v", req.id, le))
+			err = errors.New(fmt.Sprintf("REQ[%04d] could not find file for %#v", req.id, le))
+			return
+		}
+
+		logger.Debug("REQ[%04d] found file at %s", req.id, path[1])
+
+		res.Header().Add("Content-Type", "application/x-debian-package")
+		http.ServeFile(res, req.Request, *repreproPath+"/"+path[1])
 	default:
 		res.Header().Set("Allow", "GET,POST")
 		logger.Debug("REQ[%04d] forbidden method: %s", req.id, req.Method)
