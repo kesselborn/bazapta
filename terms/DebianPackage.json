@@ -1,0 +1,16 @@
+{
+  "@context": {
+    "dc": "http://purl.org/dc/terms/"
+  },
+  "name":      "dc:name",
+  "dist":      "/terms/dist",
+  "component": "/terms/component",
+  "arch":      "/terms/arch",
+  "version":   "/terms/version",
+  "url": {
+    "@type": "@id"
+  },
+  "downloadUrl": {
+    "@type": "@id"
+  }
+}
