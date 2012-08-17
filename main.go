@@ -24,9 +24,11 @@ var (
 	verbose      = flag.Bool("d", false, "Verbose debugging output")
 	// regex for entries like: squeeze|main|i386: hadoop-0.20-jobtracker 0.20.2+923.97-1
 	listRe = regexp.MustCompilePOSIX("(.*)\\|(.*)\\|(.*): (.*) (.*)$")
-	// regex for package urls like: /dists/squeeze/3w-sas_3.26.00.028-2.6.26-3_arch
-	packageUrl  = regexp.MustCompilePOSIX("/dists/(.*)/(.*)/(.*)_(.*)_(.*)\\.deb$")
-	skipLineErr = errors.New("Skip this line")
+	// regex for package urls like: /dists/squeeze/main/3w-sas_3.26.00.028-2.6.26-3_arch.deb
+	packageUrl = regexp.MustCompilePOSIX("/dists/(.*)/(.*)/(.*)_(.*)_(.*)\\.deb$")
+	// regex for package urls like: /dists/squeeze/main/3w-sas_3.26.00.028-2.6.26-3_arch
+	packageInfoUrl = regexp.MustCompilePOSIX("/dists/(.*)/(.*)/(.*)_(.*)_([^\\.]*)$")
+	skipLineErr    = errors.New("Skip this line")
 )
 
 var id int
@@ -34,8 +36,13 @@ var dists []string
 var logger *logorithm.L
 var rrPath string
 
+type dist struct {
+	Name string
+	Url  string
+}
+
 type ListEntry struct {
-	Dist        string
+	Dist        dist
 	Component   string
 	Arch        string
 	Name        string
@@ -44,12 +51,10 @@ type ListEntry struct {
 	DownloadUrl string
 }
 
-func (le ListEntry) createUrl(req indexedRequest) string {
-	return "http://" + req.Host + "/dists/" + le.Dist + "/" + le.Component + "/" + le.Name + "_" + le.Version + "_" + le.Arch
-}
-
-func (le ListEntry) createDownloadUrl(req indexedRequest) string {
-	return le.createUrl(req) + ".deb"
+func (le *ListEntry) fillUrls(req indexedRequest) {
+	le.Dist.Url = "http://" + req.Host + "/dists/" + le.Dist.Name
+	le.Url = "http://" + req.Host + "/dists/" + le.Dist.Name + "/" + le.Component + "/" + le.Name + "_" + le.Version + "_" + le.Arch
+	le.DownloadUrl = "http://" + req.Host + "/dists/" + le.Dist.Name + "/" + le.Component + "/" + le.Name + "_" + le.Version + "_" + le.Arch + ".deb"
 }
 
 func pathToListEntry(path string) (le ListEntry, err error) {
@@ -61,7 +66,7 @@ func pathToListEntry(path string) (le ListEntry, err error) {
 	}
 
 	le = ListEntry{
-		Dist:      parsedUrl[1],
+		Dist:      dist{parsedUrl[1], ""},
 		Component: parsedUrl[2],
 		Name:      parsedUrl[3],
 		Version:   parsedUrl[4],
@@ -79,15 +84,14 @@ func parseListEntry(req indexedRequest, line string, distribution string) (le Li
 	}
 
 	le = ListEntry{
-		Dist:      parsedEntry[1],
+		Dist:      dist{parsedEntry[1], ""},
 		Component: parsedEntry[2],
 		Arch:      parsedEntry[3],
 		Name:      parsedEntry[4],
 		Version:   parsedEntry[5],
 	}
 
-	le.Url = le.createUrl(req)
-	le.DownloadUrl = le.createDownloadUrl(req)
+	le.fillUrls(req)
 
 	return
 }
@@ -261,7 +265,7 @@ func deletePackage(res http.ResponseWriter, req indexedRequest, distribution str
 	cmd := exec.Cmd{
 		Path: rrPath,
 		Dir:  *repreproPath,
-		Args: []string{rrPath, "remove", le.Dist, "-A", le.Arch, le.Name},
+		Args: []string{rrPath, "remove", le.Dist.Name, "-A", le.Arch, le.Name},
 	}
 	logger.Debug("REQ[%04d] executing: %s", req.id, strings.Join(cmd.Args, " "))
 
