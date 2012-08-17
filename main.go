@@ -35,15 +35,21 @@ var logger *logorithm.L
 var rrPath string
 
 type ListEntry struct {
-	Distribution string
-	Component    string
-	Arch         string
-	Package      string
-	Version      string
+	Dist        string
+	Component   string
+	Arch        string
+	Name        string
+	Version     string
+	Url         string
+	DownloadUrl string
 }
 
-func (le ListEntry) Path(req indexedRequest) string {
-	return "http://" + req.Host + "/distributions/" + le.Distribution + "/" + le.Component + "/" + le.Arch + "/" + le.Package + "_" + le.Version
+func (le ListEntry) createUrl(req indexedRequest) string {
+	return "http://" + req.Host + "/distributions/" + le.Dist + "/" + le.Component + "/" + le.Arch + "/" + le.Name + "_" + le.Version
+}
+
+func (le ListEntry) createDownloadUrl(req indexedRequest) string {
+	return le.createUrl(req) + ".deb"
 }
 
 func pathToListEntry(path string) (le ListEntry, err error) {
@@ -54,17 +60,17 @@ func pathToListEntry(path string) (le ListEntry, err error) {
 	}
 
 	le = ListEntry{
-		Distribution: parsedUrl[1],
-		Component:    parsedUrl[2],
-		Arch:         parsedUrl[3],
-		Package:      parsedUrl[4],
-		Version:      parsedUrl[5],
+		Dist:      parsedUrl[1],
+		Component: parsedUrl[2],
+		Arch:      parsedUrl[3],
+		Name:      parsedUrl[4],
+		Version:   parsedUrl[5],
 	}
 
 	return
 }
 
-func parseListEntry(line string, distribution string) (le ListEntry, err error) {
+func parseListEntry(req indexedRequest, line string, distribution string) (le ListEntry, err error) {
 	parsedEntry := listRe.FindStringSubmatch(line)
 	if len(parsedEntry) != 6 {
 		err = skipLineErr
@@ -72,17 +78,20 @@ func parseListEntry(line string, distribution string) (le ListEntry, err error) 
 	}
 
 	le = ListEntry{
-		Distribution: parsedEntry[1],
-		Component:    parsedEntry[2],
-		Arch:         parsedEntry[3],
-		Package:      parsedEntry[4],
-		Version:      parsedEntry[5],
+		Dist:      parsedEntry[1],
+		Component: parsedEntry[2],
+		Arch:      parsedEntry[3],
+		Name:      parsedEntry[4],
+		Version:   parsedEntry[5],
 	}
+
+	le.Url = le.createUrl(req)
+	le.DownloadUrl = le.createDownloadUrl(req)
 
 	return
 }
 
-type List map[string]ListEntry
+type List []ListEntry
 
 type indexedRequest struct {
 	*http.Request
@@ -163,14 +172,14 @@ func handleRequest(res http.ResponseWriter, req *http.Request) {
 
 	switch {
 	case len(distribution) > 0:
-		foundDistribution := false
+		foundDist := false
 		for _, d := range distributions {
 			if d == distribution[1] {
 				logger.Debug("REQ[%04d] verified %s is a supported distribution", iReq.id, distribution[1])
-				foundDistribution = true
+				foundDist = true
 			}
 		}
-		if !foundDistribution {
+		if !foundDist {
 			err = errors.New("unsupported distribution: '" + distribution[1] + "'")
 			break
 		}
@@ -245,7 +254,7 @@ func deletePackage(res http.ResponseWriter, req indexedRequest, distribution str
 	cmd := exec.Cmd{
 		Path: rrPath,
 		Dir:  *repreproPath,
-		Args: []string{rrPath, "remove", le.Distribution, le.Package},
+		Args: []string{rrPath, "remove", le.Dist, le.Name},
 	}
 	logger.Debug("REQ[%04d] executing: %s", req.id, strings.Join(cmd.Args, " "))
 
@@ -271,9 +280,11 @@ func listPackages(res http.ResponseWriter, req indexedRequest, distribution stri
 		return
 	}
 
-	list := make(List)
-	for _, line := range strings.Split(string(output), "\n") {
-		le, err := parseListEntry(line, distribution)
+	lines := strings.Split(string(output), "\n")
+	list := make(List, len(lines))
+
+	for i, line := range lines {
+		le, err := parseListEntry(req, line, distribution)
 		if err == skipLineErr {
 			continue
 		}
@@ -281,7 +292,7 @@ func listPackages(res http.ResponseWriter, req indexedRequest, distribution stri
 			return err
 		}
 
-		list[le.Path(req)] = le
+		list[i] = le
 	}
 
 	json, err := json.MarshalIndent(list, "", " ")
