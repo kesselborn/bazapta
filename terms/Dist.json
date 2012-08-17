@@ -1,0 +1,15 @@
+{
+  "@context": {
+    "dc": "http://purl.org/dc/terms/",
+    "baz": "/terms/"
+  },
+  "Url": {
+    "@type": "@id"
+  },
+  "Name": "dc:name",
+  "Packages": {
+    "@id": "baz:DebianPackage",
+    "@type": "@id",
+    "@list": true
+  }
+}

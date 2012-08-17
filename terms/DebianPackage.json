@@ -1,6 +1,7 @@
 {
   "@context": {
-    "dc": "http://purl.org/dc/terms/"
+    "dc": "http://purl.org/dc/terms/",
+    "baz": "/terms/"
   },
   "Url": {
     "@type": "@id"
@@ -8,16 +9,16 @@
   "Name": "dc:name",
   "downloadUrl": {
     "@type": "@id",
-    "@id": "/terms/dotDebUrl"
+    "@id": "baz:downloadUrl"
   },
   "Dist": {
     "Url": {
-      "@id":   "/terms/dist",
+      "@id":   "baz:Dist",
       "@type": "@id"
     },
     "Name": "dc:name"
   },
-  "Component": "/terms/component",
-  "Arch":      "/terms/arch",
-  "Version":   "/terms/version"
+  "Component": "baz:component",
+  "Arch":      "baz:arch",
+  "Version":   "baz:version"
 }
