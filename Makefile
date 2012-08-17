@@ -1,5 +1,6 @@
 VERSION?=$$( git describe --tags || git rev-parse --short HEAD || date "+build%Y%m%d%n" )
 GOFLAGS=-v -x -ldflags "-X main.VERSION_STRING $$(echo $(VERSION))"
+GOPATH=${PWD}
 
 default:
 	go build $(GOFLAGS)
@@ -14,9 +15,8 @@ PKG_GOPATH=$(PWD)/src/$(PKG)
 build: clean compile
 
 compile: $(PKG_GOPATH)
-	GOPATH=$(PWD) go get $(GOFLAGS) -d  ./...
-	GOPATH=$(PWD) go install $(GOFLAGS) $(PKG)
-
+	go get $(GOFLAGS) -d  ./...
+	go install $(GOFLAGS) $(PKG)
 
 $(PKG_GOPATH):
 	mkdir -p $$(dirname $(PKG_GOPATH))
