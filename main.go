@@ -24,13 +24,13 @@ var (
 	verbose      = flag.Bool("d", false, "Verbose debugging output")
 	// regex for entries like: squeeze|main|i386: hadoop-0.20-jobtracker 0.20.2+923.97-1
 	listRe = regexp.MustCompilePOSIX("(.*)\\|(.*)\\|(.*): (.*) (.*)$")
-	// regex for package urls like: /distributions/squeeze/main/amd64/3w-sas_3.26.00.028-2.6.26-3
-	packageUrl  = regexp.MustCompilePOSIX("/distributions/(.*)/(.*)/(.*)/(.*)_(.*)$")
+	// regex for package urls like: /dists/squeeze/3w-sas_3.26.00.028-2.6.26-3_arch
+	packageUrl  = regexp.MustCompilePOSIX("/dists/(.*)/(.*)_(.*)_([^\\.]).deb*$")
 	skipLineErr = errors.New("Skip this line")
 )
 
 var id int
-var distributions []string
+var dists []string
 var logger *logorithm.L
 var rrPath string
 
@@ -45,7 +45,7 @@ type ListEntry struct {
 }
 
 func (le ListEntry) createUrl(req indexedRequest) string {
-	return "http://" + req.Host + "/distributions/" + le.Dist + "/" + le.Component + "/" + le.Arch + "/" + le.Name + "_" + le.Version
+	return "http://" + req.Host + "/dists/" + le.Dist + "/" + le.Name + "_" + le.Version + "_" + le.Arch
 }
 
 func (le ListEntry) createDownloadUrl(req indexedRequest) string {
@@ -146,13 +146,13 @@ func checkRepreproPaths() (err error) {
 
 	for _, fileInfo := range dirEntries {
 		if name := fileInfo.Name(); fileInfo.IsDir() && name[0] != '.' {
-			distributions = append(distributions, name)
+			dists = append(dists, name)
 			logger.Info("GLOBAL: found distribution %s", name)
 		}
 	}
 
-	if len(distributions) == 0 {
-		err = errors.New("could not find any distributions in " + distsPath)
+	if len(dists) == 0 {
+		err = errors.New("could not find any dists in " + distsPath)
 		return
 	}
 
@@ -167,13 +167,13 @@ func handleRequest(res http.ResponseWriter, req *http.Request) {
 
 	logger.Debug("GLOBAL: received request, assigning id REQ[%04d]", id)
 
-	rePattern := regexp.MustCompile("/distributions/([^/]+)")
+	rePattern := regexp.MustCompile("/dists/([^/]+)")
 	distribution := rePattern.FindStringSubmatch(iReq.URL.Path)
 
 	switch {
 	case len(distribution) > 0:
 		foundDist := false
-		for _, d := range distributions {
+		for _, d := range dists {
 			if d == distribution[1] {
 				logger.Debug("REQ[%04d] verified %s is a supported distribution", iReq.id, distribution[1])
 				foundDist = true
@@ -191,12 +191,12 @@ func handleRequest(res http.ResponseWriter, req *http.Request) {
 		res.Header().Set("Allow", "GET")
 		res.Header().Set("Content-Type", "application/json")
 
-		distPaths := make([]string, len(distributions))
-		for i, dist := range distributions {
-			distPaths[i] = "http://" + iReq.Host + "/distributions/" + dist
+		distPaths := make([]string, len(dists))
+		for i, dist := range dists {
+			distPaths[i] = "http://" + iReq.Host + "/dists/" + dist
 		}
 
-		json, err := json.MarshalIndent(map[string][]string{"distributions": distPaths}, "", "  ")
+		json, err := json.MarshalIndent(map[string][]string{"dists": distPaths}, "", "  ")
 		if err != nil {
 			return
 		}
